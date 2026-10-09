@@ -3,6 +3,7 @@ import { saveCheckin } from '@/app/actions';
 import { fmtDate, todayISO } from '@/lib/journey';
 import type { Checkin } from '@/lib/types';
 import { CheckinCard } from '@/components/CheckinCard';
+import SubmitButton from '@/components/SubmitButton';
 
 export default async function CheckinPage() {
   const { supabase, profile } = await requireActive();
@@ -25,7 +26,7 @@ export default async function CheckinPage() {
         <label className="f">Hôm nay làm gì?<textarea name="did" required defaultValue={today?.did} placeholder="VD: Live 6h30 90 phút, nhắn 50 tin Zalo, học Module 2 phần vĩ mô VN" /></label>
         <label className="f">Kết quả<textarea name="result" defaultValue={today?.result} placeholder="VD: 35 mắt xem, 4 follow mới, 2 khách rep Zalo, hẹn gọi 1 khách" /></label>
         <label className="f">Cần anh lead hỗ trợ gì? (để trống nếu không)<textarea name="need_help" defaultValue={today?.need_help} placeholder="VD: Khách hỏi margin M+ cho mã ngoài danh sách, em chưa biết trả lời" /></label>
-        <div><button className="btn" type="submit">{today ? 'Cập nhật check-in' : 'Gửi check-in'}</button></div>
+        <div><SubmitButton>{today ? 'Cập nhật check-in' : 'Gửi check-in'}</SubmitButton></div>
       </form>
 
       <section className="blk">

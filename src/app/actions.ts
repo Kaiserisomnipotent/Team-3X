@@ -2,10 +2,12 @@
 // Mọi thao tác ghi dữ liệu đi qua đây. Phân quyền được kiểm tra 2 lớp:
 // ở đây (requireActive/requireStaff) và trong database (RLS trong supabase/schema.sql).
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { requireActive, requireStaff, requireAdmin } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { QUIZZES } from '@/lib/quizzes';
 import { ALL_TASKS, todayISO } from '@/lib/journey';
+import { sendInviteMail } from '@/lib/mail';
 
 const str = (f: FormData, k: string, max = 2000) => String(f.get(k) ?? '').trim().slice(0, max);
 const int = (f: FormData, k: string) => Math.max(0, Math.floor(Number(f.get(k)) || 0));
@@ -116,26 +118,65 @@ export async function replyCheckin(fd: FormData) {
 
 // ---------- Admin: tài khoản ----------
 export async function updateMember(fd: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase, profile: me } = await requireAdmin();
+  const id = str(fd, 'id', 64);
   const role = str(fd, 'role', 10);
   const start = str(fd, 'start_date', 10);
   const patch: Record<string, string | null> = { team: str(fd, 'team', 40) || null, full_name: str(fd, 'full_name', 80) };
-  if (['pending', 'member', 'leader', 'admin', 'disabled'].includes(role)) patch.role = role;
+  // Admin không tự đổi vai trò của chính mình (tránh tự khoá mình ra ngoài).
+  if (id !== me.id && ['pending', 'member', 'leader', 'admin', 'disabled'].includes(role)) patch.role = role;
   if (isoOk(start)) patch.start_date = start;
-  await supabase.from('profiles').update(patch).eq('id', str(fd, 'id', 64));
+  await supabase.from('profiles').update(patch).eq('id', id);
   revalidatePath('/', 'layout');
 }
+/** Khoá hoặc mở khoá nhanh (nhân sự nghỉ việc / quay lại). Khoá có hiệu lực ngay ở lần tải trang kế tiếp. */
+export async function setMemberLock(fd: FormData) {
+  const { supabase, profile: me } = await requireAdmin();
+  const id = str(fd, 'id', 64);
+  if (id === me.id) return;
+  const lock = str(fd, 'lock', 5) === '1';
+  await supabase.from('profiles').update({ role: lock ? 'disabled' : 'member' }).eq('id', id);
+  revalidatePath('/', 'layout');
+}
+/** Xoá hẳn tài khoản và toàn bộ dữ liệu của người đó (tiến độ, điểm, check-in…). Không hoàn tác được. */
+export async function deleteMember(fd: FormData) {
+  const { supabase, profile: me } = await requireAdmin();
+  const id = str(fd, 'id', 64);
+  if (id === me.id) return;
+  const { data: target } = await supabase.from('profiles').select('email').eq('id', id).maybeSingle();
+  if (!target) return;
+  const admin = supabaseAdmin();
+  const { error } = await admin.auth.admin.deleteUser(id);
+  if (error) redirect('/admin?acct=failed');
+  // Xoá cả lời mời, nếu không họ đăng nhập lại là được duyệt lại ngay.
+  await admin.from('invites').delete().ilike('email', target.email);
+  revalidatePath('/', 'layout');
+  redirect('/admin?acct=deleted');
+}
 export async function addInvite(fd: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase, profile: me } = await requireAdmin();
   const email = str(fd, 'email', 120).toLowerCase();
   const start = str(fd, 'start_date', 10);
-  const role = str(fd, 'role', 10);
+  const role = ['member', 'leader', 'admin'].includes(str(fd, 'role', 10)) ? str(fd, 'role', 10) : 'member';
+  const team = str(fd, 'team', 40) || null;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
-  await supabase.from('invites').upsert({
-    email, role: ['member', 'leader', 'admin'].includes(role) ? role : 'member',
-    team: str(fd, 'team', 40) || null, start_date: isoOk(start) ? start : null,
-  });
-  revalidatePath('/admin');
+  await supabase.from('invites').upsert({ email, role, team, start_date: isoOk(start) ? start : null });
+
+  // Người này đã từng đăng nhập: áp nhóm/ngày bắt đầu/vai trò cho hồ sơ hiện có (trước đây chỉ có tác dụng với người mới).
+  const { data: existing } = await supabase.from('profiles').select('id,full_name').ilike('email', email).maybeSingle();
+  let applied = false;
+  if (existing) {
+    const patch: Record<string, string | null> = { team };
+    if (isoOk(start)) patch.start_date = start;
+    if (existing.id !== me.id) patch.role = role;
+    await supabase.from('profiles').update(patch).eq('id', existing.id);
+    applied = true;
+  }
+
+  const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://team-3-x.vercel.app';
+  const mail = await sendInviteMail(email, existing?.full_name || email.split('@')[0], site);
+  revalidatePath('/', 'layout');
+  redirect(`/admin?invite=${mail}${applied ? '&applied=1' : ''}`);
 }
 export async function deleteInvite(fd: FormData) {
   const { supabase } = await requireAdmin();

@@ -1,6 +1,7 @@
 import { fmtDate } from '@/lib/journey';
 import { replyCheckin } from '@/app/actions';
 import type { Checkin } from '@/lib/types';
+import SubmitButton from '@/components/SubmitButton';
 
 export function CheckinCard({ c, who, canReply }: { c: Checkin; who?: string; canReply?: boolean }) {
   return (
@@ -18,7 +19,7 @@ export function CheckinCard({ c, who, canReply }: { c: Checkin; who?: string; ca
         <form action={replyCheckin} className="row" style={{ alignItems: 'flex-end' }}>
           <input type="hidden" name="id" value={c.id} />
           <label className="f" style={{ flex: 1, minWidth: 220 }}>{c.leader_reply ? 'Sửa câu trả lời' : 'Trả lời'}<textarea name="reply" required defaultValue={c.leader_reply || ''} style={{ minHeight: 50 }} /></label>
-          <button className="btn sm" type="submit">Gửi &amp; đánh dấu xong</button>
+          <SubmitButton className="btn sm">Gửi &amp; đánh dấu xong</SubmitButton>
         </form>
       )}
     </div>
