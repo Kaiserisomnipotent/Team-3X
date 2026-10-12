@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { readPage, STATIC_PAGES } from '@/lib/pages';
+import { requireActive } from '@/lib/auth';
 import Highlight from '@/components/Highlight';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function StaticPage({ params }: { params: Promise<{ slug: string }> }) {
+  await requireActive(); // kiểm tra lại quyền mỗi lần mở trang (khi chuyển trang kiểu SPA, layout không chạy lại)
   const { slug } = await params;
   const html = await readPage(slug);
   if (!html) notFound();

@@ -1,9 +1,7 @@
 import { requireActive } from '@/lib/auth';
-import { setTaskStatus } from '@/app/actions';
+import TaskStatus from '@/components/TaskStatus';
 import { dayNum, fmtDate, todayISO } from '@/lib/journey';
 import type { AssignedTask } from '@/lib/types';
-
-const LABEL = { todo: 'Chưa làm', doing: 'Đang làm', done: 'Xong' } as const;
 
 export default async function MyTasks() {
   const { supabase, profile } = await requireActive();
@@ -21,12 +19,7 @@ export default async function MyTasks() {
           {r.detail && <div className="d" style={{ whiteSpace: 'pre-wrap' }}>{r.detail}</div>}
           <div className="d">{r.due_date ? <>Hạn {fmtDate(r.due_date)} {late && <span className="pill s-down" style={{ marginLeft: 6 }}>Quá hạn</span>}</> : 'Không đặt hạn'}</div>
         </div>
-        <form action={setTaskStatus} className="row">
-          <input type="hidden" name="id" value={r.id} />
-          {(['todo', 'doing', 'done'] as const).map(s => (
-            <button key={s} name="status" value={s} type="submit" className={`btn sm${r.status === s ? '' : ' ghost'}`}>{LABEL[s]}</button>
-          ))}
-        </form>
+        <TaskStatus id={r.id} status={r.status} />
       </div>
     );
   };

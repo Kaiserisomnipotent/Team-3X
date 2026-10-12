@@ -54,6 +54,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
       {sp.invite && INVITE_MSG[sp.invite] && <div className={`note ${INVITE_MSG[sp.invite][0]}`}>{INVITE_MSG[sp.invite][1]}{sp.applied && ' Tài khoản này đã đăng nhập từ trước nên nhóm, ngày bắt đầu và vai trò mới đã được áp dụng ngay.'}</div>}
       {sp.acct === 'deleted' && <div className="note info">Đã xoá tài khoản và toàn bộ dữ liệu của người đó.</div>}
+      {sp.acct === 'locked' && <div className="note info">Đã khoá tài khoản. Người này bị đăng xuất và không đăng nhập lại được.</div>}
+      {sp.acct === 'unlocked' && <div className="note info">Đã mở khoá, tài khoản trở lại vai trò Nhân sự.</div>}
+      {sp.acct === 'lockfailed' && <div className="note warn">Khoá / mở khoá chưa thành công, thử lại.</div>}
       {sp.acct === 'failed' && <div className="note warn">Xoá tài khoản chưa thành công, thử lại.</div>}
 
       <section className="blk" style={{ marginTop: 0 }}>
