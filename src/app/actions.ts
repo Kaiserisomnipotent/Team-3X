@@ -132,23 +132,25 @@ export async function updateMember(fd: FormData) {
   await supabase.from('profiles').update(patch).eq('id', id);
   revalidatePath('/', 'layout');
 }
-/** Khoá hoặc mở khoá nhanh (nhân sự nghỉ việc / quay lại). Khoá: đổi vai trò + chặn luôn ở tầng đăng nhập, nên không đăng nhập lại hay làm mới phiên được. */
-export async function setMemberLock(fd: FormData) {
+/** Khoá / mở khoá: hai action riêng (không dựa vào name/value của nút bấm vì trình duyệt có thể không gửi kèm, từng khiến "Khoá" bị hiểu thành "Mở khoá"). */
+async function setLock(fd: FormData, lock: boolean) {
   const { profile: me } = await requireAdmin();
   const id = str(fd, 'id', 64);
-  if (id === me.id) return;
-  const lock = str(fd, 'lock', 5) === '1';
+  if (!id || id === me.id) return;
   const admin = supabaseAdmin();
   const { data, error } = await admin.from('profiles').update({ role: lock ? 'disabled' : 'member' }).eq('id', id).select('id');
   if (error || !data?.length) {
-    console.error('setMemberLock', error);
+    console.error('setLock', lock, error);
     redirect('/admin?acct=lockfailed');
   }
+  // Khoá ở tầng đăng nhập: không đăng nhập lại, không làm mới phiên được.
   const ban = await admin.auth.admin.updateUserById(id, { ban_duration: lock ? '876000h' : 'none' });
-  if (ban.error) console.error('setMemberLock ban', ban.error);
+  if (ban.error) console.error('setLock ban', ban.error);
   revalidatePath('/', 'layout');
   redirect(`/admin?acct=${lock ? 'locked' : 'unlocked'}`);
 }
+export async function lockMember(fd: FormData) { await setLock(fd, true); }
+export async function unlockMember(fd: FormData) { await setLock(fd, false); }
 /** Xoá hẳn tài khoản và toàn bộ dữ liệu của người đó (tiến độ, điểm, check-in…). Không hoàn tác được. */
 export async function deleteMember(fd: FormData) {
   const { supabase, profile: me } = await requireAdmin();
