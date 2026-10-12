@@ -37,10 +37,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (staff) {
     items.push(
       { group: 'Leader' },
-      { href: '/team', label: 'Tiến độ cả team', step: '▦' },
+      { href: '/team', label: profile.role === 'admin' ? 'Tiến độ cả team' : 'Tiến độ nhóm', step: '▦' },
       { href: '/ho-tro', label: 'Yêu cầu hỗ trợ', step: '?', count: help.count || 0, tone: 'bad' },
       { href: '/giao-viec', label: 'Giao việc', step: '+' },
     );
+    if (profile.role === 'leader') items.push({ href: '/nhom', label: 'Nhóm của tôi', step: '@' });
     if (profile.role === 'admin') items.push({ href: '/admin', label: 'Quản lý tài khoản', step: '⚙' });
   }
 

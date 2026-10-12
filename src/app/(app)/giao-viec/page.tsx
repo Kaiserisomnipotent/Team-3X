@@ -8,13 +8,15 @@ import type { AssignedTask, Profile } from '@/lib/types';
 const LABEL = { todo: 'Chưa làm', doing: 'Đang làm', done: 'Xong' } as const;
 
 export default async function AssignPage() {
-  const { supabase } = await requireStaff();
+  const { supabase, profile: me } = await requireStaff();
   const [pr, at] = await Promise.all([
     supabase.from('profiles').select('*').in('role', ['member', 'leader', 'admin']).order('full_name'),
     supabase.from('assigned_tasks').select('*').neq('status', 'done').order('due_date', { ascending: true, nullsFirst: false }).limit(300),
   ]);
-  const members = (pr.data || []) as Profile[];
-  const name = new Map(members.map(m => [m.id, m.full_name || m.email]));
+  // RLS đã lọc: leader chỉ thấy người mình phụ trách (và chính mình — bỏ ra vì không tự giao việc).
+  const all = (pr.data || []) as Profile[];
+  const members = me.role === 'admin' ? all : all.filter(m => m.id !== me.id);
+  const name = new Map(all.map(m => [m.id, m.full_name || m.email]));
   const t = dayNum(todayISO());
   return (
     <div className="page">

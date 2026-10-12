@@ -33,8 +33,12 @@ export type Profile = {
   team: string | null;
   start_date: string;   // yyyy-mm-dd
   role: Role;
+  is_owner: boolean;
+  leader_id: string | null;
   created_at: string;
 };
+
+export type Video = { id: string; bunny_id: string; module: string; title: string; minutes: number | null; note: string; sort: number };
 
 export type KpiLog = {
   id: string;
