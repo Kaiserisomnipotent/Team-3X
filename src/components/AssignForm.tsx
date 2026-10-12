@@ -11,7 +11,7 @@ export function AssignForm({ members, preset }: { members: Profile[]; preset?: s
           <div className="row">
             {members.map(m => (
               <label key={m.id} className="row" style={{ gap: 6, fontSize: 14, border: '1px solid var(--line)', borderRadius: 999, padding: '4px 10px' }}>
-                <input type="checkbox" name="assignee" value={m.id} /> {m.full_name || m.email}{m.team ? <span className="srcline">· {m.team}</span> : null}
+                <input type="checkbox" name="assignee" value={m.id} /> {m.full_name || m.email}{m.team ? <span className="srcline">· nhóm {m.team}</span> : null}
               </label>
             ))}
           </div>

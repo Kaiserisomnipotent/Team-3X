@@ -2,7 +2,7 @@
 // - Mỗi nhân sự: việc quá hạn, việc đến hạn trong giai đoạn, việc leader giao sắp hạn, nhắc check-in.
 // - Thứ Hai: leader/admin nhận thêm bản tóm tắt cả team.
 import { NextResponse, type NextRequest } from 'next/server';
-import { Resend } from 'resend';
+import { mailLayout, mailReady, sendMails, type Mail } from '@/lib/mail';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { loadTeam } from '@/lib/teamData';
 import { dayNum, dayOf, fmtDate, fmtNum, isoFromNum, nextTasks, todayISO } from '@/lib/journey';
@@ -12,22 +12,15 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const wrap = (title: string, body: string, site: string) => `<!doctype html><html><body style="margin:0;background:#F1F3F6;font-family:Arial,sans-serif;color:#111725">
-<div style="max-width:560px;margin:0 auto;padding:24px">
-<div style="background:#0D121C;color:#E7EBF3;padding:12px 16px;border-radius:6px 6px 0 0;font:600 12px monospace;letter-spacing:.12em">TEAM 3X · HÀNH TRÌNH 99 NGÀY</div>
-<div style="background:#fff;border:1px solid #D6DCE5;border-top:0;border-radius:0 0 6px 6px;padding:20px">
-<h2 style="margin:0 0 12px;font-size:20px">${title}</h2>${body}
-<p style="margin:20px 0 0"><a href="${site}" style="background:#111725;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600">Mở web học viện</a></p>
-</div><p style="font-size:12px;color:#566076">Email tự động từ hệ thống đào tạo nội bộ Team 3X.</p></div></body></html>`;
+const wrap = (title: string, body: string, site: string) => mailLayout(title, body, site);
 const li = (items: string[]) => `<ul style="padding-left:18px;margin:6px 0 14px;line-height:1.6">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 
 export async function GET(req: NextRequest) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!process.env.RESEND_API_KEY) return NextResponse.json({ error: 'Thiếu RESEND_API_KEY' }, { status: 500 });
+  if (!mailReady()) return NextResponse.json({ error: 'Chưa cấu hình email (GMAIL_USER + GMAIL_APP_PASSWORD hoặc RESEND_API_KEY)' }, { status: 500 });
   const site = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
-  const from = process.env.EMAIL_FROM || 'Học viện Team 3X <onboarding@resend.dev>';
   const db = supabaseAdmin();
   const today = todayISO(), yesterday = isoFromNum(dayNum(today) - 1), soon = isoFromNum(dayNum(today) + 2);
 
@@ -44,7 +37,7 @@ export async function GET(req: NextRequest) {
   const tasksBy = new Map<string, AssignedTask[]>();
   ((at.data || []) as AssignedTask[]).forEach(t => tasksBy.set(t.assignee, [...(tasksBy.get(t.assignee) || []), t]));
 
-  const emails: { from: string; to: string; subject: string; html: string }[] = [];
+  const emails: Mail[] = [];
   for (const p of profiles) {
     if (p.role !== 'member') continue; // leader/admin không nhận nhắc học
     const day = dayOf(p.start_date, today);
@@ -57,27 +50,25 @@ export async function GET(req: NextRequest) {
     if (current.length) body += `<b>Đang trong hạn</b>` + li(current.map(o => `${esc(o.t.t)} <span style="color:#566076">· ${esc(o.st.label)}</span>`));
     if (mine.length) body += `<b>Việc leader giao sắp đến hạn</b>` + li(mine.map(t => `${esc(t.title)} <span style="color:#566076">· hạn ${fmtDate(t.due_date)}</span>`));
     if (!overdue.length && !current.length && !mine.length) body += `<p>Không có việc nào tồn đọng. Giữ nhịp live và nhắn Zalo đều tay!</p>`;
-    emails.push({ from, to: p.email, subject: `Ngày ${day}/99 · ${overdue.length ? overdue.length + ' việc quá hạn' : 'việc cần làm hôm nay'}`, html: wrap(`Ngày ${day}/99`, body, site) });
+    emails.push({ to: p.email, subject: `Ngày ${day}/99 · ${overdue.length ? overdue.length + ' việc quá hạn' : 'việc cần làm hôm nay'}`, html: wrap(`Ngày ${day}/99`, body, site) });
   }
 
   // Thứ Hai (giờ VN): tóm tắt tuần cho leader/admin
   const weekday = new Date(today + 'T00:00:00Z').getUTCDay();
   if (weekday === 1 || req.nextUrl.searchParams.get('weekly') === '1') {
     const { rows } = await loadTeam(db);
-    const members = rows.filter(r => r.p.role === 'member');
-    const table = `<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="background:#E8ECF1"><th align="left" style="padding:6px">Nhân sự</th><th>Ngày</th><th>Tiến độ</th><th>Quá hạn</th><th>Kỳ này</th><th>Check-in 7 ngày</th></tr>${members.map(r => `<tr style="border-top:1px solid #D6DCE5"><td style="padding:6px">${esc(r.p.full_name || r.p.email)}</td><td align="center">${r.s.day}</td><td align="center">${r.s.pct}%</td><td align="center" style="color:${r.s.overdue ? '#CF3A2E' : '#566076'}">${r.s.overdue}</td><td align="center">${r.ks.tk} TK · ${fmtNum(r.ks.net)} tr</td><td align="center">${r.checkins7}/7</td></tr>`).join('')}</table>`;
-    const behind = members.filter(r => r.s.overdue > 0 || r.checkins7 < 4);
-    const body = (behind.length ? `<p><b>Cần kèm tuần này:</b> ${behind.map(r => esc(r.p.full_name || r.p.email)).join(', ')}</p>` : '<p>Cả team đang đúng tiến độ.</p>') + table;
+    const allMembers = rows.filter(r => r.p.role === 'member');
+    // Admin nhận cả team; leader chỉ nhận nhóm mình phụ trách.
     for (const s of profiles.filter(p => p.role === 'leader' || p.role === 'admin')) {
-      emails.push({ from, to: s.email, subject: `Tóm tắt tuần Team 3X · ${fmtDate(today)}`, html: wrap('Tóm tắt tuần', body, site + '/team') });
+      const members = s.role === 'admin' ? allMembers : allMembers.filter(r => r.p.leader_id === s.id);
+      if (!members.length) continue;
+      const table = `<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="background:#E8ECF1"><th align="left" style="padding:6px">Nhân sự</th><th>Ngày</th><th>Tiến độ</th><th>Quá hạn</th><th>Kỳ này</th><th>Check-in 7 ngày</th></tr>${members.map(r => `<tr style="border-top:1px solid #D6DCE5"><td style="padding:6px">${esc(r.p.full_name || r.p.email)}</td><td align="center">${r.s.day}</td><td align="center">${r.s.pct}%</td><td align="center" style="color:${r.s.overdue ? '#CF3A2E' : '#566076'}">${r.s.overdue}</td><td align="center">${r.ks.tk} TK · ${fmtNum(r.ks.net)} tr</td><td align="center">${r.checkins7}/7</td></tr>`).join('')}</table>`;
+      const behind = members.filter(r => r.s.overdue > 0 || r.checkins7 < 4);
+      const body = (behind.length ? `<p><b>Cần kèm tuần này:</b> ${behind.map(r => esc(r.p.full_name || r.p.email)).join(', ')}</p>` : '<p>Cả nhóm đang đúng tiến độ.</p>') + table;
+      emails.push({ to: s.email, subject: `Tóm tắt tuần ${s.role === 'admin' ? 'Team 3X' : 'nhóm của bạn'} · ${fmtDate(today)}`, html: wrap('Tóm tắt tuần', body, site + '/team') });
     }
   }
 
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  let sent = 0; const errors: string[] = [];
-  for (let i = 0; i < emails.length; i += 100) {
-    const { error } = await resend.batch.send(emails.slice(i, i + 100));
-    if (error) errors.push(error.message); else sent += Math.min(100, emails.length - i);
-  }
+  const { sent, errors } = await sendMails(emails);
   return NextResponse.json({ date: today, sent, errors });
 }
