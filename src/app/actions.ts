@@ -83,12 +83,15 @@ export async function saveCheckin(fd: FormData) {
 }
 
 // ---------- Việc được giao ----------
-export async function setTaskStatus(fd: FormData) {
-  const { supabase } = await requireActive();
-  const status = str(fd, 'status', 10);
-  if (!['todo', 'doing', 'done'].includes(status)) return;
-  await supabase.from('assigned_tasks').update({ status }).eq('id', str(fd, 'id', 64));
+export async function setTaskStatus(id: string, status: string): Promise<{ ok: boolean; msg?: string }> {
+  const { supabase, profile } = await requireActive();
+  if (!['todo', 'doing', 'done'].includes(status) || !id) return { ok: false, msg: 'Dữ liệu không hợp lệ.' };
+  // .select() để biết có dòng nào thực sự được cập nhật không (không có = bị chặn quyền hoặc việc không thuộc về bạn).
+  const { data, error } = await supabase.from('assigned_tasks').update({ status }).eq('id', id).eq('assignee', profile.id).select('id');
+  if (error) console.error('setTaskStatus', error);
+  if (error || !data?.length) return { ok: false, msg: 'Chưa lưu được trạng thái. Tải lại trang rồi thử lại, nếu vẫn lỗi hãy báo leader.' };
   revalidatePath('/', 'layout');
+  return { ok: true };
 }
 
 // ---------- Leader ----------
@@ -129,14 +132,22 @@ export async function updateMember(fd: FormData) {
   await supabase.from('profiles').update(patch).eq('id', id);
   revalidatePath('/', 'layout');
 }
-/** Khoá hoặc mở khoá nhanh (nhân sự nghỉ việc / quay lại). Khoá có hiệu lực ngay ở lần tải trang kế tiếp. */
+/** Khoá hoặc mở khoá nhanh (nhân sự nghỉ việc / quay lại). Khoá: đổi vai trò + chặn luôn ở tầng đăng nhập, nên không đăng nhập lại hay làm mới phiên được. */
 export async function setMemberLock(fd: FormData) {
-  const { supabase, profile: me } = await requireAdmin();
+  const { profile: me } = await requireAdmin();
   const id = str(fd, 'id', 64);
   if (id === me.id) return;
   const lock = str(fd, 'lock', 5) === '1';
-  await supabase.from('profiles').update({ role: lock ? 'disabled' : 'member' }).eq('id', id);
+  const admin = supabaseAdmin();
+  const { data, error } = await admin.from('profiles').update({ role: lock ? 'disabled' : 'member' }).eq('id', id).select('id');
+  if (error || !data?.length) {
+    console.error('setMemberLock', error);
+    redirect('/admin?acct=lockfailed');
+  }
+  const ban = await admin.auth.admin.updateUserById(id, { ban_duration: lock ? '876000h' : 'none' });
+  if (ban.error) console.error('setMemberLock ban', ban.error);
   revalidatePath('/', 'layout');
+  redirect(`/admin?acct=${lock ? 'locked' : 'unlocked'}`);
 }
 /** Xoá hẳn tài khoản và toàn bộ dữ liệu của người đó (tiến độ, điểm, check-in…). Không hoàn tác được. */
 export async function deleteMember(fd: FormData) {

@@ -24,6 +24,18 @@ export async function middleware(req: NextRequest) {
     url.search = '';
     return NextResponse.redirect(url);
   }
+  // Đã đăng nhập nhưng chưa duyệt / đã bị khoá: chặn ở MỌI request (kể cả chuyển trang kiểu SPA, server action, API).
+  if (user && !PUBLIC.some(p => path.startsWith(p)) && !['/cho-duyet', '/auth/signout'].some(p => path.startsWith(p))) {
+    const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    const role = prof?.role as string | undefined;
+    if (!role || !['member', 'leader', 'admin'].includes(role)) {
+      if (path.startsWith('/api/')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+      const url = req.nextUrl.clone();
+      url.pathname = role === 'disabled' ? '/login' : '/cho-duyet';
+      url.search = role === 'disabled' ? '?error=disabled' : '';
+      return NextResponse.redirect(url);
+    }
+  }
   return res;
 }
 
