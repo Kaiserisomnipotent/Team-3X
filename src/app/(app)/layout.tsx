@@ -5,6 +5,7 @@ import { QUIZ_COUNT } from '@/lib/quizMeta';
 import RailNav, { type NavItem } from '@/components/RailNav';
 import Protect from '@/components/Protect';
 import TopBar from '@/components/TopBar';
+import AutoRefresh from '@/components/AutoRefresh';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, profile } = await requireActive();
@@ -59,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main id="main">{children}</main>
       </div>
       <Protect email={profile.email} />
+      <AutoRefresh />
     </>
   );
 }
